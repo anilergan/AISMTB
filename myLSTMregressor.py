@@ -28,7 +28,7 @@ class my_RNN_LSTM_Regressor():
         self.build(units, dropout, target_len)
 
         print('Model is running...')
-        self.run(epoch, batch_size, x.shape[1])
+        self.run(epoch, batch_size)
 
 
 
@@ -47,13 +47,21 @@ class my_RNN_LSTM_Regressor():
 
         X_train = []
         y_train = []
+        train_set_without_target = self.train_set.drop([target_col], axis = 1)
         for i in range(time_steps, self.train_set.shape[0]):
-            X_train.append(self.train_set.iloc[i-time_steps:i,:].values)
-            # X_train shape: time_steps x x_col_len
+            time_steps_arr = self.train_set.loc[i-time_steps:i,[target_col]].values
+            # time_steps x 1  
+            features_arr = train_set_without_target.iloc[i-1, :].values.reshape(-1, 1)
+            # (train_set_len - 1) x 1
+
+            X_train.append(np.concatenate((time_steps_arr, features_arr), axis = 0))
             y_train.append(self.train_set.loc[i, [target_col]].values)
 
         X_train, y_train = np.array(X_train), np.array(y_train)
-        # X_train shape = (train_set - time_steps) x time_steps x x_col_len
+        # X_train shape: (train_len - time_steps) x (time_steps + train_set_len - 1)
+
+        X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], 1))
+
         return X_train, y_train
 
             
@@ -61,7 +69,7 @@ class my_RNN_LSTM_Regressor():
         self.model = sq()
 
         # input
-        self.model.add(LSTM(units=units, return_sequences = True, input_shape = (self.X_train.shape[1], self.X_train.shape[2])))
+        self.model.add(LSTM(units=units, return_sequences = True, input_shape = (self.X_train.shape[0], self.X_train.shape[1])))
         self.model.add(Dropout(dropout))
         
         # first
@@ -80,7 +88,7 @@ class my_RNN_LSTM_Regressor():
         self.model.add(Dense(units=target_len))
 
 
-    def run(self, epoch, batch_size, x_col_len):
+    def run(self, epoch, batch_size):
         # compile model
         self.model.compile(optimizer='adam', loss='mean_squared_error')
         
@@ -94,15 +102,30 @@ class my_RNN_LSTM_Regressor():
         import matplotlib.pyplot as plt
 
         dataset_X_total = pd.concat((self.train_set[:], self.test_set[:]), axis = 0)
+        dataset_X_total_without_target = dataset_X_total.drop([target_col], axis = 1)
+        
+        inputs = dataset_X_total.iloc[len(dataset_X_total) - len(self.test_set) - time_steps:] # last (time_steps) data in train set + test set
+        inputs_without_target = dataset_X_total_without_target.iloc[len(dataset_X_total) - len(self.test_set) - time_steps:]
 
-        inputs = dataset_X_total.iloc[len(dataset_X_total) - len(self.test_set) - time_steps:].values # last (time_steps) data in train set + test set
+        # X_train = []
+        # train_set_without_target = self.train_set.drop([target_col], axis = 1)
+        # for i in range(time_steps, self.train_set.shape[0]):
+        #     time_steps_arr = self.train_set.loc[i-time_steps:i,[target_col]].values
+        #     # time_steps x 1  
+        #     features_arr = train_set_without_target.iloc[i-1, :].values.reshape(-1, 1)
+        #     # (train_set_len - 1) x 1
+
+        #     X_train.append(np.concatenate((time_steps_arr, features_arr), axis = 0))
 
         X_test = []
         for i in range(time_steps, time_steps + len(self.test_set)):
-            X_test.append(inputs[i-time_steps:i, :])
+            time_steps_arr = inputs.loc[i-time_steps:i, [target_col]].values
+            features_arr = inputs_without_target.iloc[i-1, :].values.reshape(-1, 1)
 
+            X_test.append(np.concatenate((time_steps_arr, features_arr), axis=0))
+            
         X_test = np.array(X_test)
-        # X_test shape: len(self.test_set) x time_steps x x_col_len
+        X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
 
         predicted_prices = self.model.predict(X_test)
 
