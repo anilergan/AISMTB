@@ -1,38 +1,53 @@
-class my_RNN_LSTM_Regressor:
+from keras.models import Sequential as sq
+from keras.layers import Dense
+from keras.layers import LSTM
+from keras.layers import Dropout
+import numpy as np
+import pandas as pd
+from sklearn.preprocessing import StandardScaler as ss
 
-    def __init__(self, x, y, test_num, pred_num, units=50, dropout=0.2, epoch=50, batch_size=32, predict=False, scaler=None):
+class my_RNN_LSTM_Regressor():
 
-        df = pd.concat([x, y], axis = 1)
+    def __init__(self, x, y, test_num, time_steps, scaler, units=50, dropout=0.2, epoch=50, batch_size=32, predict=False, product=''):
+        
+        self.pred_arg_1 = y.columns[0]
+        self.pred_arg_2 = time_steps
+        self.pred_arg_3 = scaler
+        self.pred_arg_4 = product
+        
+        df = x
 
+        print('Processing: Train-Test Split...')
         self.train_set, self.test_set = self.train_test_split(df, test_num)
+        
+        print('Processing: Seperate Train Data to X and Y according to Time Steps...')
+        self.X_train, self.y_train = self.time_steps_split(time_steps, x.shape[1], y.columns[0])
 
-        self.X_train, self.y_train = self.pred_split(pred_num, x.shape[1])
-
+        print('Model is building...')
         self.build(units, dropout, x.shape[1])
 
+        print('Model is running...')
         self.run(epoch, batch_size, x.shape[1])
 
-        self.pred_arg_1 = y.column[0]
-        self.pred_arg_2 = pred_num
-        self.pred_arg_3 = scaler
+
 
         if predict:
-            self.predict(self.pred_arg_1, self.pred_arg_2, self.pred_arg_3)
+            print('Estimating by model...')
+            self.predict(self.pred_arg_1, self.pred_arg_2, self.pred_arg_3, self.pred_arg_4)
         
     def train_test_split(self, df, test_num):
-        train_num = len(df) - test_num
-        train_set = df.iloc[:train_num, :]
-        test_set = df.iloc[train_num:, :]
+        train_set = df.iloc[test_num:, :].reset_index(drop=True)
+        test_set = df.iloc[:test_num, :].reset_index(drop=True)
 
         return train_set, test_set
 
-    def pred_split(self, pred_num,x_col_len):
+    def time_steps_split(self, time_steps, x_col_len, target_col):
         X_train = []
         y_train = []
-        for i in range(pred_num, self.train_set.shape[0]):
-            X_train.append(self.train_set.iloc[i-pred_num:i,:x_col_len].values)
-            y_train.append(self.train_set.iloc[i, x_col_len:].values)
-        
+        for i in range(time_steps, self.train_set.shape[0]):
+            X_train.append(self.train_set.iloc[i-time_steps:i,:].values)
+            y_train.append(self.train_set.loc[i, [target_col]].values)
+
         X_train, y_train = np.array(X_train), np.array(y_train)
         return X_train, y_train
 
@@ -70,28 +85,44 @@ class my_RNN_LSTM_Regressor:
 
         self.model.fit(self.X_train, self.y_train, epochs = epoch, batch_size = batch_size)
 
-    def predict(self,target_col, pred_num, scaler):
+    def predict(self, target_col, time_steps, scaler, product):
 
         import matplotlib.pyplot as plt
 
-        df_total_target = pd.concat(self.train_set[target_col], self.test_set[target_col], axis = 0)
-        inputs = df_total_target[len(df_total_target) - len(self.test_set) - pred_num:].values # last (pred_num) day data of train set + test set
-        inputs = inputs.reshape(-1,1)
+        dataset_X_total = pd.concat((self.test_set[:], self.train_set[:], ), axis = 0)
+
+
+        inputs = dataset_X_total.iloc[: len(self.test_set) + time_steps, :].values # {test set} + {last (time_steps) data in train set}
 
         X_test = []
-        for i in range(pred_num, pred_num + len(self.test_set)):
-            X_test.append(inputs[i-self.pred_num: self.pred_num, :])
-        X_test = np.array(X_test)
-        # inputs = train_set'in last (pred_num) values + test_set
+        for i in range(len(self.test_set), 0, -1):
+            X_test.append(inputs[i:i+time_steps, :])
+
+
+  
+        X_test_matrix = np.vstack(X_test) #.reshape(-1,1)
+
+        # inputs = train_set's last (time_steps) values + test_set
         # so above code seperate x_test from inputs
 
-        predicted_prices = self.model.predict(X_test)
-        predicted_prices_inv = scaler.inverse_transform(predicted_prices)
 
-        plt.plot(self.test_set[target_col], color='deepskyblue', label = 'Real Google Stack Price')
-        plt.plot(predicted_prices_inv, color='lightskyblue', label = 'Predicted Google Stack Price')
-        plt.title('Google Stock Price Prediction')
+        x_col_len = len(self.train_set.columns)
+
+        # (batch_size, time_steps, features)
+        X_test_matrix = np.reshape(X_test_matrix, (len(self.test_set), time_steps, x_col_len))
+        
+
+        predicted_prices = self.model.predict(X_test_matrix)
+        predicted_prices_inv = scaler.inverse_transform(predicted_prices)
+        
+        test_set_target_inv = scaler.inverse_transform(self.test_set[target_col].values.reshape(-1,1))
+    
+        plt.plot(test_set_target_inv, color='blue', label = f'{product} Real Price')
+        plt.plot(predicted_prices_inv, color='gold', label = f'{product} Estimated Price')
+        plt.title(f'{product} Market Price Prediction')
         plt.xlabel('Date')
         plt.ylabel('Price')
         plt.legend()
         plt.show()
+        
+        print('\n', 'Process is succeeded! Model results are in shown!')
