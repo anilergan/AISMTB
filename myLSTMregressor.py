@@ -143,7 +143,7 @@ class my_RNN_LSTM_Regressor():
         predicted_prices_inv = scaler.inverse_transform(predicted_prices)
         test_set_target_inv = scaler.inverse_transform(self.test_set[target_col].values.reshape(-1,1))
 
-        plt.figure(figsize=(5,12))
+        plt.figure(figsize=(8,4))
         plt.plot(test_set_target_inv, color='deepskyblue', label = f'{product} Real Price')
         plt.plot(predicted_prices_inv, color='tomato', label = f'{product} Estimated Price')
         plt.title(f'{product} Market Price Prediction')
