@@ -4,16 +4,16 @@ from keras.layers import LSTM
 from keras.layers import Dropout
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler as StdSca
 import matplotlib.pyplot as plt
 
 class my_RNN_LSTM_Regressor():
 
-    def __init__(self, x, y, x_rnn_cols, test_num, time_steps, units=50, dropout=0.2, epoch=50, batch_size=32, predict=False, figsize=[8,4], product=''):
+    def __init__(self, x, y, x_rnn_cols, test_num, time_steps, scaler, units=50, dropout=0.2, epoch=50, batch_size=32, predict=False, figsize=[8,4], product=''):
         
         # Prediction arguments
         self.target_col = y.columns[0]
         self.time_steps = time_steps 
+        self.scaler_model = scaler
         
         target = y.columns[0]
         
@@ -40,7 +40,7 @@ class my_RNN_LSTM_Regressor():
 
         if predict:
             print('Estimating by model...')
-            test_inv = StdSca().inverse_transform(self.test_set[y.columns[0]].values.reshape(-1,1))
+            test_inv = self.scaler_model.inverse_transform(self.test_set[y.columns[0]].values.reshape(-1,1))
 
             pred_inv = self.predict(self.target_col, self.time_steps)
 
@@ -150,7 +150,7 @@ class my_RNN_LSTM_Regressor():
 
         predicted_prices = self.model.predict(X_test)
 
-        predicted_prices_inv = StdSca().inverse_transform(predicted_prices)
+        predicted_prices_inv = self.scaler_model.inverse_transform(predicted_prices)
 
         return predicted_prices_inv
 
