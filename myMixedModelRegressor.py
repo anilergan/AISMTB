@@ -8,16 +8,12 @@ from sklearn.model_selection import train_test_split
 
 class my_RNN_ANN_Mixed_Regressor():
 
-    def __init__(self, x, y, x_rnn_cols, test_num, time_steps, scaler, units=50, dropout=0.25, epoch=50, batch_size=32, predict=False, figsize=[8,4], product=''):
+    def __init__(self, x, y, x_rnn_cols, test_size=0.2, time_steps=60, lstm_act='tanh', ann_act='relu', model_act='relu', model_units=32,  units=50, dropout=0.25, epoch=50, batch_size=32, predict=False, scaler, figsize=[8,4], product=''):
         
-        # Prediction arguments
-        self.target_col = y.columns[0]
-        self.time_steps = time_steps 
-        self.scaler_model = scaler
-
         self.x_R = x.loc[:, x_rnn_cols]
         self.x_A = x.drop(x_rnn_cols, axis=1)
-        
+        self.y = y
+
         target = y.columns[0]
         
         target_check = False
@@ -28,18 +24,23 @@ class my_RNN_ANN_Mixed_Regressor():
         else: df = pd.concat([x,y], axis=1)
          
 
-        print('Processing: Train-Test Split...')
-        self.train_set, self.test_set = self.train_test_split(df, test_num)
+        print('Processing1 : Split data as train and test')
+        x_A_train, x_A_test, x_R_train, x_R_test, y_train, y_test  = self.train_test_split(df, test_size)
         
-        print('Processing: Seperate Train Data to X and Y according to Time Steps...')
-        self.X_train, self.y_train = self.time_steps_split(time_steps)
+        print('Processing 2: Rehape RNN data by timesteps')
+        X_R_train_shaped, X_R_test_shaped = self.rehape_rnn_data_by_timesteps(x_R_train, x_R_test, time_steps)
 
-        print('Model is building...')
-        target_len = y.shape[1]
-        self.build(units, dropout)
+        print('Processing 3.1: Building LSTM model')
+        self.build_lstm(units, dropout, lstm_act)
+
+        print('Processing 3.2: Building LSTM model')
+        self.build_ann(units, dropout, ann_act)
+
+        print('')
+        self.build_model(model_units, model_act)
 
         print('Model is running...')
-        self.run(epoch, batch_size)
+        self.run(X_R_train_shaped, x_A_train, y_train, epoch, batch_size)
 
         if predict:
             print('Estimating by model...')
@@ -50,20 +51,29 @@ class my_RNN_ANN_Mixed_Regressor():
             self.visualize(test_inv, pred_inv, figsize, product)
         
 
-    def train_test_split(self, x_A, x_R, y, test_size):
-        x_A_train, x_A_test, x_R_train, x_R_test, y_train, y_test = train_test_split(x_A, x_R, y, test_size=ts)
+    def train_test_split(self, test_size):
+        x_A_train, x_A_test, x_R_train, x_R_test, y_train, y_test = train_test_split(self.x_A, self.x_R, self.y, test_size=test_size)
         return x_A_train, x_A_test, x_R_train, x_R_test, y_train, y_test 
 
     def rehape_rnn_data_by_timesteps(x_R_train, x_R_test, time_steps):
-        x_R_train_reshaped = []
-        x_R_test_reshaped = []
+        x_R_train_lstm_list = []
+        x_R_test_lstm_list = []
 
         for i in range(time_steps, x_R_train.shape[0]):
-            X_R_train.iloc[i+1: ]
+            x_R_time_steps_array = x_R_train.iloc[i-time_steps:i-1, :].values
+            x_R_train_lstm_list.append(x_R_time_steps_array)
 
+        for i in range(time_steps, x_R_test.shape[0]):
+            x_R_time_steps_array = x_R_test.iloc[i-time_steps:i-1, :].values
+            x_R_test_lstm_list.append(x_R_time_steps_array)
 
+        x_R_train_lstm_array, x_R_test_lstm_array = np.array(x_R_train_lstm_list), np.array(x_R_test_lstm_list)
 
+        x_R_train_lstm_array_reshaped = np.reshape(x_R_train_lstm_array, (x_R_train_lstm_array.shape[0], x_R_train_lstm_array.shape[1], 1))
 
+        x_R_test_lstm_array_reshaped = np.reshape(x_R_test_lstm_array, (x_R_test_lstm_array.shape[0], x_R_test_lstm_array.shape[1], 1))
+
+        return x_R_train_lstm_array_reshaped, x_R_test_lstm_array_reshaped
             
     def build_lstm(self, units, dropout, lstm_act):
         self.model_lstm = Sequential()
@@ -110,18 +120,13 @@ class my_RNN_ANN_Mixed_Regressor():
         self.model = Model(inputs = [self.model_lstm.inputs, self.model_ann.inputs], output = output_)
         
 
-    def run(self, epoch, batch_size):
+    def run(self, x_R_train, x_A_train, y_train, epoch, batch_size):
         # compile model
         self.model.compile(optimizer='adam', loss='mean_squared_error')
         
         # fit model
-        model.fit([])
+        self.model.fit([x_R_train, x_A_train], y_train, epoch=epoch, batch_size=batch_size )
 
-
-        # no problem until here in case of shape of X and y train!
-        print(self.X_train.shape)
-        print(self.y_train.shape)
-        self.model.fit(self.X_train, self.y_train, epochs = epoch, batch_size = batch_size)
 
     def predict(self):
 
