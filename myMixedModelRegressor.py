@@ -24,30 +24,31 @@ class my_RNN_ANN_Mixed_Regressor():
         else: df = pd.concat([x,y], axis=1)
          
 
-        print('Processing1 : Split data as train and test')
+        print('Process 1 : Splitting data as train and test')
         x_A_train, x_A_test, x_R_train, x_R_test, y_train, y_test  = self.train_test_split(df, test_size)
         
-        print('Processing 2: Rehape RNN data by timesteps')
+        print('Process 2: Rehaping RNN data by timesteps')
         X_R_train_shaped, X_R_test_shaped = self.rehape_rnn_data_by_timesteps(x_R_train, x_R_test, time_steps)
 
-        print('Processing 3.1: Building LSTM model')
+        print('Process 3.1: Building LSTM model')
         self.build_lstm(units, dropout, lstm_act)
 
-        print('Processing 3.2: Building LSTM model')
+        print('Process 3.2: Building ANN model')
         self.build_ann(units, dropout, ann_act)
 
-        print('')
+        print('Process 3.3: Building the final model')
         self.build_model(model_units, model_act)
 
-        print('Model is running...')
+        print('Process 4: Running the Model')
         self.run(X_R_train_shaped, x_A_train, y_train, epoch, batch_size)
 
         if predict:
-            print('Estimating by model...')
-            test_inv = self.scaler_model.inverse_transform(self.test_set[self.target_col].values.reshape(-1,1))
+            print('Process 5.1: Estimating by the model')
+            test_inv = scaler.inverse_transform(self.test_set[self.target_col].values.reshape(-1,1))
 
-            pred_inv = self.predict(self.target_col, self.time_steps)
+            pred_inv = self.predict(scaler, self.target_col, self.time_steps)
 
+            print('Process 5.2: Visualizing of comparison reality and estimation')
             self.visualize(test_inv, pred_inv, figsize, product)
         
 
@@ -55,23 +56,26 @@ class my_RNN_ANN_Mixed_Regressor():
         x_A_train, x_A_test, x_R_train, x_R_test, y_train, y_test = train_test_split(self.x_A, self.x_R, self.y, test_size=test_size)
         return x_A_train, x_A_test, x_R_train, x_R_test, y_train, y_test 
 
-    def rehape_rnn_data_by_timesteps(x_R_train, x_R_test, time_steps):
-        x_R_train_lstm_list = []
-        x_R_test_lstm_list = []
+    def rehape_rnn_data_by_timesteps(self, x_R_train, x_R_test, time_steps):
 
+        x_R_train_TS_list = []
         for i in range(time_steps, x_R_train.shape[0]):
             x_R_time_steps_array = x_R_train.iloc[i-time_steps:i-1, :].values
-            x_R_train_lstm_list.append(x_R_time_steps_array)
+            x_R_train_TS_list.append(x_R_time_steps_array)
 
-        for i in range(time_steps, x_R_test.shape[0]):
+        
+        inputs = self.x_R.iloc[len(self.x_R) - len(x_R_test) - time_steps].reset_index(drop=True)
+
+        x_R_test_TS_list = []
+        for i in range(time_steps, time_steps + len(x_R_test)):
             x_R_time_steps_array = x_R_test.iloc[i-time_steps:i-1, :].values
-            x_R_test_lstm_list.append(x_R_time_steps_array)
+            x_R_test_TS_list.append(x_R_time_steps_array)
+        
+        # list to array
+        x_R_train_TS_array, x_R_test_TS_array = np.array(x_R_train_TS_list), np.array(x_R_test_TS_list)
 
-        x_R_train_lstm_array, x_R_test_lstm_array = np.array(x_R_train_lstm_list), np.array(x_R_test_lstm_list)
-
-        x_R_train_lstm_array_reshaped = np.reshape(x_R_train_lstm_array, (x_R_train_lstm_array.shape[0], x_R_train_lstm_array.shape[1], 1))
-
-        x_R_test_lstm_array_reshaped = np.reshape(x_R_test_lstm_array, (x_R_test_lstm_array.shape[0], x_R_test_lstm_array.shape[1], 1))
+        # reshape arrays to put into lstm model
+        x_R_train_lstm_array_reshaped, x_R_test_lstm_array_reshaped = np.reshape(x_R_train_TS_array, (x_R_train_TS_array.shape[0], x_R_train_TS_array.shape[1], 1)), np.reshape(x_R_test_TS_array, (x_R_test_TS_array.shape[0], x_R_test_TS_array.shape[1], 1))
 
         return x_R_train_lstm_array_reshaped, x_R_test_lstm_array_reshaped
             
@@ -128,39 +132,22 @@ class my_RNN_ANN_Mixed_Regressor():
         self.model.fit([x_R_train, x_A_train], y_train, epoch=epoch, batch_size=batch_size )
 
 
-    def predict(self):
+    def predict(self, scaler, ):
 
-        dataset_X_total = pd.concat((self.train_set[:], self.test_set[:]), axis = 0, ignore_index=True)
-        print('dataset_X_total: ',dataset_X_total.shape)
-        dataset_X_total_without_target = dataset_X_total.drop([self.target_col], axis = 1)
-        
-        inputs = dataset_X_total.iloc[len(dataset_X_total) - len(self.test_set) - self.time_steps:, :].reset_index(drop=True) # last (time_steps) data in train set + test set
-        print('inputs: ',inputs.shape)
-
-        inputs_without_target = dataset_X_total_without_target.iloc[len(dataset_X_total) - len(self.test_set) - self.time_steps:]
-
-        X_test = []
-        for i in range(self.time_steps, self.time_steps + len(self.test_set)):
-            time_steps_arr = inputs.loc[i-self.time_steps:i-1, [self.target_col]].values
-            if i == self.time_steps: print('time_steps_arr: ',time_steps_arr.shape)
-            features_arr = inputs_without_target.iloc[i-1:i, :].values.reshape(-1, 1)
-            if i == self.time_steps: print('features_arr: ',features_arr.shape)
-            X_test.append(np.concatenate((time_steps_arr, features_arr), axis=0))
-            
         X_test = np.array(X_test)
         # X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[2], 1))
 
         predicted_prices = self.model.predict(X_test)
 
-        predicted_prices_inv = self.scaler_model.inverse_transform(predicted_prices)
+        predicted_prices_inv = scaler.inverse_transform(predicted_prices)
 
         return predicted_prices_inv
 
     def visualize(self, test, pred, fig, product):
 
         plt.figure(figsize=(fig[0],fig[1]))
-        plt.plot(pred, color='deepskyblue', label = f'{product} Real Price')
-        plt.plot(test, color='tomato', label = f'{product} Estimated Price')
+        plt.plot(pred, color='darkorange', label = f'{product} Real Price')
+        plt.plot(test, color='darkorchid', label = f'{product} Estimated Price')
         plt.title(f'{product} Market Price Prediction')
         plt.xlabel('Date')
         plt.ylabel('Price')
