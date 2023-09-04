@@ -112,6 +112,7 @@ class my_RNN_LSTM_Regressor():
         # no problem until here in case of shape of X and y train!
         print(self.X_train.shape)
         print(self.y_train.shape)
+        
         self.model.fit(self.X_train, self.y_train, epochs = epoch, batch_size = batch_size)
 
     def predict(self, target_col, time_steps, scaler, product):
