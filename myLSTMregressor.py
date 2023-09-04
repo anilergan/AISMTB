@@ -4,18 +4,26 @@ from keras.layers import LSTM
 from keras.layers import Dropout
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler as ss
+import matplotlib.pyplot as plt
 
 class my_RNN_LSTM_Regressor():
 
-    def __init__(self, x, y, test_num, time_steps, scaler, units=50, dropout=0.2, epoch=50, batch_size=32, predict=False, product=''):
+    def __init__(self, x, y, x_rnn_cols, test_num, time_steps, scaler, units=50, dropout=0.2, epoch=50, batch_size=32, predict=False, figsize=[8,4], product=''):
         
-        self.pred_arg_1 = y.columns[0]
-        self.pred_arg_2 = time_steps
-        self.pred_arg_3 = scaler
-        self.pred_arg_4 = product
+        # Prediction arguments
+        self.target_col = y.columns[0]
+        self.time_steps = time_steps 
+        self.scaler_model = scaler
         
-        df = x
+        target = y.columns[0]
+        
+        target_check = False
+        for i in x_rnn_cols:
+            if i == target: target_check = True
+        
+        if target_check: df = x
+        else: df = pd.concat([x,y], axis=1)
+         
 
         print('Processing: Train-Test Split...')
         self.train_set, self.test_set = self.train_test_split(df, test_num)
@@ -32,7 +40,11 @@ class my_RNN_LSTM_Regressor():
 
         if predict:
             print('Estimating by model...')
-            self.predict(self.pred_arg_1, self.pred_arg_2, self.pred_arg_3, self.pred_arg_4)
+            test_inv = self.scaler_model.inverse_transform(self.test_set[y.columns[0]].values.reshape(-1,1))
+
+            pred_inv = self.predict(self.target_col, self.time_steps)
+
+            self.visualize(test_inv, pred_inv, figsize, product)
         
 
     def train_test_split(self, df, test_num):
@@ -112,12 +124,9 @@ class my_RNN_LSTM_Regressor():
         # no problem until here in case of shape of X and y train!
         print(self.X_train.shape)
         print(self.y_train.shape)
-        
         self.model.fit(self.X_train, self.y_train, epochs = epoch, batch_size = batch_size)
 
-    def predict(self, target_col, time_steps, scaler, product):
-
-        import matplotlib.pyplot as plt
+    def predict(self, target_col, time_steps):
 
         dataset_X_total = pd.concat((self.train_set[:], self.test_set[:]), axis = 0, ignore_index=True)
         print('dataset_X_total: ',dataset_X_total.shape)
@@ -141,12 +150,15 @@ class my_RNN_LSTM_Regressor():
 
         predicted_prices = self.model.predict(X_test)
 
-        predicted_prices_inv = scaler.inverse_transform(predicted_prices)
-        test_set_target_inv = scaler.inverse_transform(self.test_set[target_col].values.reshape(-1,1))
+        predicted_prices_inv = self.scaler_model.inverse_transform(predicted_prices)
 
-        plt.figure(figsize=(8,4))
-        plt.plot(test_set_target_inv, color='deepskyblue', label = f'{product} Real Price')
-        plt.plot(predicted_prices_inv, color='tomato', label = f'{product} Estimated Price')
+        return predicted_prices_inv
+
+    def visualize(self, test, pred, fig, product):
+
+        plt.figure(figsize=(fig[0],fig[1]))
+        plt.plot(pred, color='deepskyblue', label = f'{product} Real Price')
+        plt.plot(test, color='tomato', label = f'{product} Estimated Price')
         plt.title(f'{product} Market Price Prediction')
         plt.xlabel('Date')
         plt.ylabel('Price')
