@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 class my_RNN_LSTM_Regressor():
 
-    def __init__(self, x, y, x_rnn_cols, test_num, time_steps, scaler, units=50, dropout=0.2, epoch=50, batch_size=32, predict=False, figsize=[8,4], product=''):
+    def __init__(self, x, y, x_rnn_cols, test_num, time_steps, scaler, units=50, dropout=0.2, epoch=50, batch_size=32, predict=False, figsize=[12,5], split_graph = 0, product=''):
         
         # Prediction arguments
         self.target_col = y.columns[0]
@@ -40,11 +40,12 @@ class my_RNN_LSTM_Regressor():
 
         if predict:
             print('Estimating by model...')
-            test_inv = self.scaler_model.inverse_transform(self.test_set[y.columns[0]].values.reshape(-1,1))
 
-            pred_inv = self.predict(self.target_col, self.time_steps)
+            self.pred_inv = self.predict(, self.target_col, self.time_steps)
 
-            self.visualize(test_inv, pred_inv, figsize, product)
+            self.test_inv = self.scaler_model.inverse_transform(self.test_set[y.columns[0]].values.reshape(-1,1))
+            
+            self.visualize(self.test_inv, self.pred_inv, figsize, split_graph, product)
         
 
     def train_test_split(self, df, test_num):
@@ -126,43 +127,55 @@ class my_RNN_LSTM_Regressor():
         print(self.y_train.shape)
         self.model.fit(self.X_train, self.y_train, epochs = epoch, batch_size = batch_size)
 
-    def predict(self, target_col, time_steps):
+    def predict(self, x_test, target_col, time_steps):
 
-        dataset_X_total = pd.concat((self.train_set[:], self.test_set[:]), axis = 0, ignore_index=True)
+        dataset_X_total = pd.concat((self.train_set[:], x_test[:]), axis = 0, ignore_index=True)
         print('dataset_X_total: ',dataset_X_total.shape)
         dataset_X_total_without_target = dataset_X_total.drop([target_col], axis = 1)
         
-        inputs = dataset_X_total.iloc[len(dataset_X_total) - len(self.test_set) - time_steps:, :].reset_index(drop=True) # last (time_steps) data in train set + test set
+        inputs = dataset_X_total.iloc[len(dataset_X_total) - len(x_test) - time_steps:, :].reset_index(drop=True) # last (time_steps) data in train set + test set
         print('inputs: ',inputs.shape)
 
-        inputs_without_target = dataset_X_total_without_target.iloc[len(dataset_X_total) - len(self.test_set) - time_steps:]
+        inputs_without_target = dataset_X_total_without_target.iloc[len(dataset_X_total) - len(x_test) - time_steps:]
 
-        X_test = []
-        for i in range(time_steps, time_steps + len(self.test_set)):
+        X_test_list = []
+        for i in range(time_steps, time_steps + len(x_test)):
             time_steps_arr = inputs.loc[i-time_steps:i-1, [target_col]].values
             if i == time_steps: print('time_steps_arr: ',time_steps_arr.shape)
             features_arr = inputs_without_target.iloc[i-1:i, :].values.reshape(-1, 1)
             if i == time_steps: print('features_arr: ',features_arr.shape)
-            X_test.append(np.concatenate((time_steps_arr, features_arr), axis=0))
+            X_test_list.append(np.concatenate((time_steps_arr, features_arr), axis=0))
             
-        X_test = np.array(X_test)
+        X_test_arr = np.array(X_test_list)
         # X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[2], 1))
 
-        predicted_prices = self.model.predict(X_test)
+        predicted_prices = self.model.predict(X_test_arr)
 
         predicted_prices_inv = self.scaler_model.inverse_transform(predicted_prices)
 
         return predicted_prices_inv
 
-    def visualize(self, test, pred, fig, product):
+    def visualize(self, test, pred, fig, split_graph, product):
 
-        plt.figure(figsize=(fig[0],fig[1]))
-        plt.plot(pred, color='deepskyblue', label = f'{product} Real Price')
-        plt.plot(test, color='tomato', label = f'{product} Estimated Price')
-        plt.title(f'{product} Market Price Prediction')
-        plt.xlabel('Date')
-        plt.ylabel('Price')
-        plt.legend()
-        plt.show()
+        if split_graph == 0:
+            plt.figure(figsize=(fig[0],fig[1]))
+            plt.plot(pred,, color='deepskyblue', label = f'{product} Real Price')
+            plt.plot(test, color='tomato', label = f'{product} Estimated Price')
+            plt.title(f'{product} Market Price Prediction')
+            plt.xlabel('Date')
+            plt.ylabel('Price')
+            plt.legend()
+            plt.show()
         
-        print('\n', 'Process is succeeded! Model results are in shown!')
+        else:
+            for i in range(split_graph):
+                plt.figure(figsize=(fig[0],fig[1]))
+                sel_bot = int((pred.shape[0])-(pred.shape[0]/split_graph)*(i+1))
+                sel_top = int((pred.shape[0])-(pred.shape[0]/split_graph)*i)
+                plt.plot(pred[sel_bot:sel_top], color='deepskyblue', label = f'{product} Real Price')
+                plt.plot(test[sel_bot:sel_top], color='tomato', label = f'{product} Estimated Price')
+                plt.title(f'{product} Market Price Prediction Graph {i+1}/{split_graph}')
+                plt.xlabel('Date')
+                plt.ylabel('Price')
+                plt.legend()
+                plt.show()        

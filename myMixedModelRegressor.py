@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split
 
 class my_RNN_ANN_Mixed_Regressor():
 
-    def __init__(self, x, y, x_rnn_cols, test_size=0.2, time_steps=60, lstm_act='tanh', ann_act='relu', model_act='relu', model_units=32,  units=50, dropout=0.25, epoch=50, batch_size=32, predict=False, scaler, figsize=[8,4], product=''):
+    def __init__(self, x, y, x_rnn_cols,  test_size=0.2, time_steps=60, lstm_act='tanh', ann_act='relu', model_act='relu', model_units=32,  units=50, dropout=0.25, epoch=50, batch_size=32, predict=True, scaler, split_graph = 0, figsize=[8,4], product=''):
         
         self.x_R = x.loc[:, x_rnn_cols]
         self.x_A = x.drop(x_rnn_cols, axis=1)
