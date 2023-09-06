@@ -6,9 +6,9 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 
 
-class my_RNN_ANN_Mixed_Regressor():
+class my_Hybrid_Model_Regressor():
 
-    def __init__(self, x, y, x_rnn_cols,  test_size=0.2, time_steps=60, lstm_act='tanh', ann_act='relu', model_act='relu', model_units=32,  units=50, dropout=0.25, epoch=50, batch_size=32, predict=True, scaler, split_graph = 0, figsize=[8,4], product=''):
+    def __init__(self, x, y, x_rnn_cols, scaler,  test_size=0.2, time_steps=60, lstm_act='tanh', ann_act='relu', model_act='relu', model_units=32,  units=50, dropout=0.25, epoch=50, batch_size=32, predict=True, split_graph = 0, figsize=[8,4], product=''):
         
         self.x_R = x.loc[:, x_rnn_cols]
         self.x_A = x.drop(x_rnn_cols, axis=1)
@@ -25,65 +25,67 @@ class my_RNN_ANN_Mixed_Regressor():
          
 
         print('Process 1 : Splitting data as train and test')
-        x_A_train, x_A_test, x_R_train, x_R_test, y_train, y_test  = self.train_test_split(df, test_size)
+        x_A_train, x_A_test, x_R_train, x_R_test, y_train, y_test  = self.data_tt_split(test_size)
         
         print('Process 2: Rehaping RNN data by timesteps')
         X_R_train_shaped, X_R_test_shaped = self.rehape_rnn_data_by_timesteps(x_R_train, x_R_test, time_steps)
 
         print('Process 3.1: Building LSTM model')
-        self.build_lstm(units, dropout, lstm_act)
+        self.build_lstm(units, dropout, lstm_act, time_steps)
 
         print('Process 3.2: Building ANN model')
         self.build_ann(units, dropout, ann_act)
 
-        print('Process 3.3: Building the final model')
-        self.build_model(model_units, model_act)
+        print('Process 4.1: Running the Models')
+        self.run(x_A_train, X_R_train_shaped, y_train, epoch, batch_size)
 
-        print('Process 4: Running the Model')
-        self.run(X_R_train_shaped, x_A_train, y_train, epoch, batch_size)
+        print('Process 4.2: Creating/Running the Hybrid Model')
+        self.hybrid(x_A_train, x_R_train, y_train)
 
         if predict:
             print('Process 5.1: Estimating by the model')
-            test_inv = scaler.inverse_transform(self.test_set[self.target_col].values.reshape(-1,1))
-
-            pred_inv = self.predict(scaler, self.target_col, self.time_steps)
+            test_inv = scaler.inverse_transform(y_test).values.reshape(-1,1)
+            pred_inv = self.predict(x_A_test, X_R_test_shaped, scaler)
 
             print('Process 5.2: Visualizing of comparison reality and estimation')
             self.visualize(test_inv, pred_inv, figsize, product)
         
 
-    def train_test_split(self, test_size):
+    def data_tt_split(self, test_size):
         x_A_train, x_A_test, x_R_train, x_R_test, y_train, y_test = train_test_split(self.x_A, self.x_R, self.y, test_size=test_size)
         return x_A_train, x_A_test, x_R_train, x_R_test, y_train, y_test 
 
     def rehape_rnn_data_by_timesteps(self, x_R_train, x_R_test, time_steps):
 
         x_R_train_TS_list = []
+        print('x_R_train: ',x_R_train.shape)
         for i in range(time_steps, x_R_train.shape[0]):
-            x_R_time_steps_array = x_R_train.iloc[i-time_steps:i-1, :].values
+            x_R_time_steps_array = x_R_train.iloc[i-time_steps:i, :].values
             x_R_train_TS_list.append(x_R_time_steps_array)
 
-        
-        inputs = self.x_R.iloc[len(self.x_R) - len(x_R_test) - time_steps].reset_index(drop=True)
 
+        inputs = self.x_R.iloc[(len(self.x_R) - len(x_R_test) - time_steps):, :].reset_index(drop=True)
         x_R_test_TS_list = []
+        print('inputs: ',inputs.shape)
         for i in range(time_steps, time_steps + len(x_R_test)):
-            x_R_time_steps_array = x_R_test.iloc[i-time_steps:i-1, :].values
+            x_R_time_steps_array = inputs.iloc[i-time_steps:i, :].values
             x_R_test_TS_list.append(x_R_time_steps_array)
         
         # list to array
         x_R_train_TS_array, x_R_test_TS_array = np.array(x_R_train_TS_list), np.array(x_R_test_TS_list)
 
         # reshape arrays to put into lstm model
+        print('x_R_train_TS_array: ', x_R_train_TS_array.shape)
+        print('x_R_test_TS_array: ', x_R_test_TS_array.shape)
         x_R_train_lstm_array_reshaped, x_R_test_lstm_array_reshaped = np.reshape(x_R_train_TS_array, (x_R_train_TS_array.shape[0], x_R_train_TS_array.shape[1], 1)), np.reshape(x_R_test_TS_array, (x_R_test_TS_array.shape[0], x_R_test_TS_array.shape[1], 1))
 
         return x_R_train_lstm_array_reshaped, x_R_test_lstm_array_reshaped
             
-    def build_lstm(self, units, dropout, lstm_act):
+    def build_lstm(self, units, dropout, lstm_act, time_steps):
         self.model_lstm = Sequential()
 
         # input
-        self.model_lstm.add(LSTM(units=units, activation= lstm_act, return_sequences = True, input_shape = (self.time_steps, 1)))
+        self.model_lstm.add(LSTM(units=units, activation= lstm_act, return_sequences = True, input_shape = (time_steps, 1)))
         self.model_lstm.add(Dropout(dropout))
         
         # first
@@ -115,33 +117,40 @@ class my_RNN_ANN_Mixed_Regressor():
         # output 
         self.model_ann.add(Dense(units=1)) #target col len is always 1 for this class
 
-    def build_model(self, model_units, model_act):
-
-        combined_input = concatenate([self.model_lstm.output, self.model_ann.output])
-        
-        output_ = Dense(units=model_units, activation=model_act)(combined_input)
-
-        self.model = Model(inputs = [self.model_lstm.inputs, self.model_ann.inputs], output = output_)
         
 
     def run(self, x_R_train, x_A_train, y_train, epoch, batch_size):
-        # compile model
-        self.model.compile(optimizer='adam', loss='mean_squared_error')
-        
-        # fit model
-        self.model.fit([x_R_train, x_A_train], y_train, epoch=epoch, batch_size=batch_size )
+
+        # compile both model
+        self.model_lstm.compile(optimizer='adam', loss='mean_squared_error')
+        self.model_ann.compile(optimizer='adam', loss='mean_squared_error')
+
+        # train both model 
+        self.model_lstm.fit(x_R_train.reshape(-1, x_R_train.shape[1], 1), y_train, epochs=epoch, batch_size=batch_size) 
+
+        self.model_ann.fit(x_A_train, y_train, epochs=epoch, batch_size=batch_size) 
 
 
-    def predict(self, scaler, ):
+    def hybrid(self, x_A_train, x_R_train, y_train):
+        # create the hybrid model
+        concatenated_output = concatenate([self.model_lstm.layers[-1].output, self.model_ann.layers[-1].output])
+        ensemble_output = Dense(1)(concatenated_output)
 
-        X_test = np.array(X_test)
-        # X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[2], 1))
+        self.hybrid_model = Model(inputs=[self.model_lstm.input, self.model_ann.input], outputs=ensemble_output)
 
-        predicted_prices = self.model.predict(X_test)
+        # compile the hybrid model
+        self.hybrid_model.compile(optimizer='adam', loss='mean_squared_error')
 
-        predicted_prices_inv = scaler.inverse_transform(predicted_prices)
+        # train the hybrid model
+        self.hybrid_model.fit([x_R_train.reshape(-1, x_R_train.shape[1], 1), x_A_train], y_train, epochs=10, batch_size=32)
 
-        return predicted_prices_inv
+    def predict(self, x_A_test, x_R_test, sc):
+
+        predictions = self.hybrid_model.predict([x_R_test.reshape(-1, x_R_test.shape[1], 1), x_A_test])
+        predictions_inversed = sc.inverse_transform(predictions)
+
+        return predictions_inversed
+
 
     def visualize(self, test, pred, fig, product):
 
