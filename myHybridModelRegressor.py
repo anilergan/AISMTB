@@ -28,7 +28,10 @@ class my_Hybrid_Model_Regressor():
         x_A_train, x_A_test, x_R_train, x_R_test, y_train, y_test  = self.data_tt_split(test_size)
         
         print('Process 2: Rehaping RNN data by timesteps')
-        X_R_train_shaped, X_R_test_shaped = self.rehape_rnn_data_by_timesteps(x_R_train, x_R_test, time_steps)
+        x_R_train, X_R_test = self.rehape_rnn_data_by_timesteps(x_R_train, x_R_test, time_steps)
+
+        print('x_R_train.shape: ', x_R_train.shape)
+        print('X_R_test.shape: ', X_R_test.shape)
 
         print('Process 3.1: Building LSTM model')
         self.build_lstm(units, dropout, lstm_act, time_steps)
@@ -37,15 +40,15 @@ class my_Hybrid_Model_Regressor():
         self.build_ann(units, dropout, ann_act)
 
         print('Process 4.1: Running the Models')
-        self.run(x_A_train, X_R_train_shaped, y_train, epoch, batch_size)
+        self.run(x_A_train, x_R_train, y_train, epoch, batch_size, time_steps)
 
         print('Process 4.2: Creating/Running the Hybrid Model')
-        self.hybrid(x_A_train, x_R_train, y_train)
+        self.hybrid(x_A_train, x_R_train, y_train, epoch, time_steps)
 
         if predict:
             print('Process 5.1: Estimating by the model')
-            test_inv = scaler.inverse_transform(y_test).values.reshape(-1,1)
-            pred_inv = self.predict(x_A_test, X_R_test_shaped, scaler)
+            test_inv = scaler.inverse_transform(y_test).reshape(-1,1)
+            pred_inv = self.predict(x_A_test, X_R_test, scaler)
 
             print('Process 5.2: Visualizing of comparison reality and estimation')
             self.visualize(test_inv, pred_inv, figsize, product)
@@ -53,12 +56,15 @@ class my_Hybrid_Model_Regressor():
 
     def data_tt_split(self, test_size):
         x_A_train, x_A_test, x_R_train, x_R_test, y_train, y_test = train_test_split(self.x_A, self.x_R, self.y, test_size=test_size)
+        print('x_A_train: ',x_A_train.shape)
+        print('x_A_test: ',x_A_test.shape)
+        print('y_train: ',y_train.shape)
+        print('y_test: ',y_test.shape)
         return x_A_train, x_A_test, x_R_train, x_R_test, y_train, y_test 
 
     def rehape_rnn_data_by_timesteps(self, x_R_train, x_R_test, time_steps):
 
         x_R_train_TS_list = []
-        print('x_R_train: ',x_R_train.shape)
         for i in range(time_steps, x_R_train.shape[0]):
             x_R_time_steps_array = x_R_train.iloc[i-time_steps:i, :].values
             x_R_train_TS_list.append(x_R_time_steps_array)
@@ -66,7 +72,6 @@ class my_Hybrid_Model_Regressor():
 
         inputs = self.x_R.iloc[(len(self.x_R) - len(x_R_test) - time_steps):, :].reset_index(drop=True)
         x_R_test_TS_list = []
-        print('inputs: ',inputs.shape)
         for i in range(time_steps, time_steps + len(x_R_test)):
             x_R_time_steps_array = inputs.iloc[i-time_steps:i, :].values
             x_R_test_TS_list.append(x_R_time_steps_array)
@@ -75,9 +80,11 @@ class my_Hybrid_Model_Regressor():
         x_R_train_TS_array, x_R_test_TS_array = np.array(x_R_train_TS_list), np.array(x_R_test_TS_list)
 
         # reshape arrays to put into lstm model
-        print('x_R_train_TS_array: ', x_R_train_TS_array.shape)
-        print('x_R_test_TS_array: ', x_R_test_TS_array.shape)
+
         x_R_train_lstm_array_reshaped, x_R_test_lstm_array_reshaped = np.reshape(x_R_train_TS_array, (x_R_train_TS_array.shape[0], x_R_train_TS_array.shape[1], 1)), np.reshape(x_R_test_TS_array, (x_R_test_TS_array.shape[0], x_R_test_TS_array.shape[1], 1))
+
+        print('x_R_train: ',x_R_train_lstm_array_reshaped.shape)
+        print('x_R_test: ',x_R_test_lstm_array_reshaped.shape)
 
         return x_R_train_lstm_array_reshaped, x_R_test_lstm_array_reshaped
             
@@ -119,21 +126,24 @@ class my_Hybrid_Model_Regressor():
 
         
 
-    def run(self, x_R_train, x_A_train, y_train, epoch, batch_size):
+    def run(self, x_A_train, x_R_train, y_train, epoch, batch_size, time_steps):
 
         # compile both model
         self.model_lstm.compile(optimizer='adam', loss='mean_squared_error')
         self.model_ann.compile(optimizer='adam', loss='mean_squared_error')
 
         # train both model 
-        self.model_lstm.fit(x_R_train.reshape(-1, x_R_train.shape[1], 1), y_train, epochs=epoch, batch_size=batch_size) 
+        self.model_lstm.fit(x_R_train.reshape(-1, x_R_train.shape[1], 1), y_train[time_steps:], epochs=epoch, batch_size=batch_size) 
 
         self.model_ann.fit(x_A_train, y_train, epochs=epoch, batch_size=batch_size) 
 
 
-    def hybrid(self, x_A_train, x_R_train, y_train):
+    def hybrid(self, x_A_train, x_R_train, y_train, epoch, time_steps):
         # create the hybrid model
-        concatenated_output = concatenate([self.model_lstm.layers[-1].output, self.model_ann.layers[-1].output])
+        print('lstm output shape: ', self.model_lstm.layers[-1].output.shape)
+        print('ann output shape: ', self.model_ann.layers[-1].output.shape)
+
+        concatenated_output = concatenate([self.model_lstm.layers[-1].output, self.model_ann.layers[-1].output], axis = 1)
         ensemble_output = Dense(1)(concatenated_output)
 
         self.hybrid_model = Model(inputs=[self.model_lstm.input, self.model_ann.input], outputs=ensemble_output)
@@ -142,11 +152,13 @@ class my_Hybrid_Model_Regressor():
         self.hybrid_model.compile(optimizer='adam', loss='mean_squared_error')
 
         # train the hybrid model
-        self.hybrid_model.fit([x_R_train.reshape(-1, x_R_train.shape[1], 1), x_A_train], y_train, epochs=10, batch_size=32)
+        self.hybrid_model.fit([x_R_train.reshape(-1, x_R_train.shape[1], 1), x_A_train[time_steps:]], y_train[time_steps:], epochs=epoch, batch_size=32)
 
     def predict(self, x_A_test, x_R_test, sc):
 
-        predictions = self.hybrid_model.predict([x_R_test.reshape(-1, x_R_test.shape[1], 1), x_A_test])
+        predictions = self.hybrid_model.predict([x_R_test.reshape(-1, x_R_test.shape[1], 1), x_A_test]).reshape(-1, 1)
+        print('Originial predictions shape: (173, 75, 1)')
+        print('After reshape: ', predictions.shape)
         predictions_inversed = sc.inverse_transform(predictions)
 
         return predictions_inversed
