@@ -25,13 +25,10 @@ class my_Hybrid_Model_Regressor():
          
 
         print('Process 1 : Splitting data as train and test')
-        x_A_train, x_A_test, x_R_train, x_R_test, y_train, y_test  = self.data_tt_split(test_size)
+        x_A_train, x_A_test, x_R_train, x_R_test, y_train, y_test  = self.data_tt_split(test_size, time_steps)
         
         print('Process 2: Rehaping RNN data by timesteps')
-        x_R_train, X_R_test = self.rehape_rnn_data_by_timesteps(x_R_train, x_R_test, time_steps)
-
-        print('x_R_train.shape: ', x_R_train.shape)
-        print('X_R_test.shape: ', X_R_test.shape)
+        x_R_train, x_R_test = self.rehape_rnn_data_by_timesteps(x_R_train, x_R_test, time_steps)
 
         print('Process 3.1: Building LSTM model')
         self.build_lstm(units, dropout, lstm_act, time_steps)
@@ -40,21 +37,23 @@ class my_Hybrid_Model_Regressor():
         self.build_ann(units, dropout, ann_act)
 
         print('Process 4.1: Running the Models')
-        self.run(x_A_train, x_R_train, y_train, epoch, batch_size, time_steps)
+        self.run_models(x_A_train, x_R_train, y_train, epoch, batch_size, time_steps)
+
+        self.predict_models(x_A_test, x_R_test)
 
         print('Process 4.2: Creating/Running the Hybrid Model')
-        self.hybrid(x_A_train, x_R_train, y_train, epoch, time_steps)
+        self.hybrid(x_A_train, x_R_train, y_train, epoch)
 
         if predict:
-            print('Process 5.1: Estimating by the model')
+            print('Process 5.1: Estimating by the hybrid model')
             test_inv = scaler.inverse_transform(y_test).reshape(-1,1)
-            pred_inv = self.predict(x_A_test, X_R_test, scaler)
+            pred_inv = self.predict_hybrid(x_A_test, X_R_test, scaler)
 
             print('Process 5.2: Visualizing of comparison reality and estimation')
             self.visualize(test_inv, pred_inv, figsize, product)
         
 
-    def data_tt_split(self, test_size):
+    def data_tt_split(self, test_size, time_steps):
         x_A_train, x_A_test, x_R_train, x_R_test, y_train, y_test = train_test_split(self.x_A, self.x_R, self.y, test_size=test_size)
         print('x_A_train: ',x_A_train.shape)
         print('x_A_test: ',x_A_test.shape)
@@ -126,7 +125,7 @@ class my_Hybrid_Model_Regressor():
 
         
 
-    def run(self, x_A_train, x_R_train, y_train, epoch, batch_size, time_steps):
+    def run_models(self, x_A_train, x_R_train, y_train, epoch, batch_size, time_steps):
 
         # compile both model
         self.model_lstm.compile(optimizer='adam', loss='mean_squared_error')
@@ -138,30 +137,37 @@ class my_Hybrid_Model_Regressor():
         self.model_ann.fit(x_A_train, y_train, epochs=epoch, batch_size=batch_size) 
 
 
-    def hybrid(self, x_A_train, x_R_train, y_train, epoch, time_steps):
+    def predict_models(self, x_A_test, x_R_test):
+        pred_A = self.model_ann.predict(x_A_test)
+        pred_R = self.model_lstm.predict(x_R_test.reshape(-1, x_R_test.shape[1], 1))
+        print('pred_A shape: ', pred_A.shape)
+        print('pred_R shape: ', pred_R.shape)
+        return pred_A, pred_R
+
+
+    def hybrid(self, pred_A, pred_R, x_A_test, x_R_test, y_test, epoch):
+        ensemble_input = concatenate([pred_A, pred_R])
+        ensemble_output = Dense(1)(ensemble_input)
+
         # create the hybrid model
         print('lstm output shape: ', self.model_lstm.layers[-1].output.shape)
         print('ann output shape: ', self.model_ann.layers[-1].output.shape)
 
-        concatenated_output = concatenate([self.model_lstm.layers[-1].output, self.model_ann.layers[-1].output], axis = 1)
-        ensemble_output = Dense(1)(concatenated_output)
-
-        self.hybrid_model = Model(inputs=[self.model_lstm.input, self.model_ann.input], outputs=ensemble_output)
+        self.hybrid_model = Model(inputs=[self.model_ann.input, self.model_lstm.input], outputs=ensemble_output)
 
         # compile the hybrid model
         self.hybrid_model.compile(optimizer='adam', loss='mean_squared_error')
 
         # train the hybrid model
-        self.hybrid_model.fit([x_R_train.reshape(-1, x_R_train.shape[1], 1), x_A_train[time_steps:]], y_train[time_steps:], epochs=epoch, batch_size=32)
+        self.hybrid_model.fit([x_R_test.reshape(-1, x_R_test.shape[1], 1), x_A_test], y_test, epochs=epoch, batch_size=32)
 
-    def predict(self, x_A_test, x_R_test, sc):
+    def predict_hybrid(self, x_A_test, x_R_test, sc):
 
-        predictions = self.hybrid_model.predict([x_R_test.reshape(-1, x_R_test.shape[1], 1), x_A_test]).reshape(-1, 1)
-        print('Originial predictions shape: (173, 75, 1)')
-        print('After reshape: ', predictions.shape)
-        predictions_inversed = sc.inverse_transform(predictions)
+        predictions = self.hybrid_model.predict([x_R_test.reshape(-1, x_R_test.shape[1], 1), x_A_test])
+        print('predictions shape:', predictions.shape)
+        predictions = sc.inverse_transform(predictions)
 
-        return predictions_inversed
+        return predictions
 
 
     def visualize(self, test, pred, fig, product):
@@ -170,7 +176,7 @@ class my_Hybrid_Model_Regressor():
         plt.plot(pred, color='darkorange', label = f'{product} Real Price')
         plt.plot(test, color='darkorchid', label = f'{product} Estimated Price')
         plt.title(f'{product} Market Price Prediction')
-        plt.xlabel('Date')
+        plt.xlabel('Days')
         plt.ylabel('Price')
         plt.legend()
         plt.show()
