@@ -4,59 +4,43 @@ from keras.layers import LSTM
 from keras.layers import Dropout
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 
-class My_Price_Regressor():
 
-    def __init__(self, df, target_col, test_num, time_steps, scaler, units=50, dropout=0.2, epoch=50, batch_size=32, predict=True, figsize=[18,6], split_graph = 0, product='', fit_verbose = 0):
-        
+class My_Combined_LSTM_Classifier():
+
+    def __init__(self, x, y, test_num, time_steps,  hidden_layer_num = 3, units=50, dropout=0.2, epoch=50, batch_size=32, model_activation = 'relu', predict=True, fit_verbose = 1):
+        self.X = x
+        self.Y = y
+
         self.fit_verbose = fit_verbose
-        self.target_col = target_col
         self.time_steps = time_steps 
-        self.scaler_model = scaler
         
-        self.x_sc, self.y_sc = self.preprocess(df, target_col, scaler)
-
         self.x_train, self.x_test, self.y_train, self.y_test = self.train_test_split(test_num)
         
         self.X_train, self.Y_train = self.train_set_ts_split()
 
         self.X_test = self.test_set_ts_split()
 
-        self.build(units, dropout)
+        self.build(hidden_layer_num, units, dropout, model_activation)
 
         self.run(epoch, batch_size)
 
         if predict:
-            self.y_pred = self.test_predict()
+            self.evaluate()
 
-            self.y_test_inv = self.scaler_model.inverse_transform(self.y_test)
-            self.y_pred_inv = self.scaler_model.inverse_transform(self.y_pred)
+            # self.y_test_inv = self.scaler_model.inverse_transform(self.y_test)
+            # self.y_pred_inv = self.scaler_model.inverse_transform(self.y_pred)
 
-            self.test_visualize(figsize, split_graph, product)
-
-            self.test_error()
+            # self.test_error()
         
-
-    def preprocess(self, df, target_col, scaler):
-        self.x = df.loc[:,[target_col]]
-        self.y = df.loc[:,[target_col]]
-        # order is old to new
-        
-        # Scale
-        x_sc = scaler.fit_transform(self.x)
-        y_sc = scaler.fit_transform(self.y)
-
-        return x_sc, y_sc
-
-
     def train_test_split(self, test_num):
-        train_num = self.x_sc.shape[0] - test_num
-        x_train = self.x_sc[:train_num]
-        x_test = self.x_sc[train_num:]
+        train_num = self.X.shape[0] - test_num
+        x_train = self.X[:train_num]
+        x_test = self.X[train_num:]
 
-        y_train = self.y_sc[:train_num]
-        y_test = self.y_sc[train_num:]
+        y_train = self.Y[:train_num]
+        y_test = self.Y[train_num:]
         return x_train, x_test, y_train, y_test
 
 
@@ -65,93 +49,74 @@ class My_Price_Regressor():
         Y_train = []
         for i in range(self.time_steps, self.x_train.shape[0]):
 
-            x_train_ts = self.x_train[i-self.time_steps:i]
-            y_train_ts = self.y_train[i]
+            x_train_ts = self.x_train[i-self.time_steps:i, :]
+            y_train_ts = self.y_train[i, :]
 
             X_train.append(x_train_ts)
             Y_train.append(y_train_ts)
 
         X_train, Y_train = np.array(X_train), np.array(Y_train)
-        X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], 1))
+        # data-length x features x 
 
         return X_train, Y_train
     
     def test_set_ts_split(self):
 
-        inputs = self.x_sc[len(self.x_sc) - len(self.x_test) - self.time_steps:] # last (time_steps) data in train set + test set
+        inputs = self.X[len(self.X) - len(self.x_test) - self.time_steps:] # last (time_steps) data in train set + test set
 
         X_test = []
         for i in range(self.time_steps, self.time_steps + len(self.x_test)):
 
-            x_test_ts = inputs[i-self.time_steps:i]
-
+            x_test_ts = inputs[i-self.time_steps:i, :]
             X_test.append(x_test_ts)
             
         X_test = np.array(X_test)
-        X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
         return X_test
             
-    def build(self, units, dropout):
+    def build(self, hidden_layer, units, dropout, model_activation):
         self.model = sq()
 
         # input
-        self.model.add(LSTM(units=units, return_sequences = True, input_shape = (self.X_train.shape[1], 1)))
+        self.model.add(LSTM(units=units, return_sequences = True, input_shape = (self.X_train.shape[1], self.X_train.shape[2])))
         self.model.add(Dropout(dropout))
         
-        # first
-        self.model.add(LSTM(units = units, return_sequences = True))
-        self.model.add(Dropout(dropout))
+        # hidden layers
+        for i in range(hidden_layer-1):
+            self.model.add(LSTM(units = units, activation=model_activation, return_sequences = True))
+            self.model.add(Dropout(dropout))
 
-        # second
-        self.model.add(LSTM(units = units, return_sequences = True))
-        self.model.add(Dropout(dropout))
 
-        # thirth
-        self.model.add(LSTM(units = units, return_sequences = False))
+        # last hidden layer
+        self.model.add(LSTM(units = units, activation=model_activation, return_sequences = False))
         self.model.add(Dropout(dropout))
         
-        # output 
-        self.model.add(Dense(units=1))
+        # output
+        self.model.add(Dense(units=self.Y.shape[1], activation='sigmoid'))
 
 
     def run(self, epoch, batch_size):
         # compile model
-        self.model.compile(optimizer='adam', loss='mean_squared_error')
+        self.model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
         
         # fit model
         self.model.fit(self.X_train, self.Y_train, epochs = epoch, batch_size = batch_size, verbose=self.fit_verbose)
 
 
-    def test_predict(self):
+    def evaluate(self):
         y_pred = self.model.predict(self.X_test, verbose=self.fit_verbose)
-        return y_pred
+
+        # Düz tahminleri kategorik etiketlere dönüştür
+        y_pred_category = np.argmax(y_pred, axis=1)
+        y_test_category = np.argmax(self.y_test, axis=1)
+
+        # Accuracy hesapla
+        accuracy = accuracy_score(y_test_category, y_pred_category)
+        formatted_accuracy = round(accuracy * 100, 2)
+        print(f"Accuracy: {formatted_accuracy}%")
 
 
-
-    def test_visualize(self, fig, split_graph, product):
-
-        if split_graph == 0:
-            plt.figure(figsize=(fig[0],fig[1]))
-            plt.plot(self.y_test_inv, color='mediumblue', label = f'{product} Real Price')
-            plt.plot(self.y_pred_inv, color='darkorchid', label = f'{product} Estimated Price')
-            plt.title(f'{product} Market Price Prediction')
-            plt.xlabel('Date')
-            plt.ylabel('Price')
-            plt.legend()
-            plt.show()
-        
-        else:
-            for i in range(split_graph):
-                plt.figure(figsize=(fig[0],fig[1]))
-                sel_bot = int((self.y_pred_inv.shape[0])-(self.y_pred_inv.shape[0]/split_graph)*(i+1))
-                sel_top = int((self.y_pred_inv.shape[0])-(self.y_pred_inv.shape[0]/split_graph)*i)
-                plt.plot(self.y_test_inv[sel_bot:sel_top], color='mediumblue', label = f'{product} Real Price')
-                plt.plot(self.y_pred_inv[sel_bot:sel_top], color='darkorchid', label = f'{product} Estimated Price')
-                plt.title(f'{product} Market Price Prediction Graph {i+1}/{split_graph}')
-                plt.xlabel('Date')
-                plt.ylabel('Price')
-                plt.legend()
-                plt.show()  
+'''
 
     def test_error(self):
         real_price_change_perc = []
@@ -277,3 +242,5 @@ class My_Price_Regressor():
     #     x = self.time_steps_split(self.x, self.time_steps)
 
     #     x
+
+    '''
