@@ -8,41 +8,33 @@ import matplotlib.pyplot as plt
 
 class My_Price_Regressor():
 
-    def __init__(self, df, target_col, test_num, time_steps, scaler, units=50, dropout=0.2, epoch=50, batch_size=32, predict=True, figsize=[18,6], split_graph = 0, product=''):
+    def __init__(self, df, target_col, test_num, time_steps, scaler, units=50, dropout=0.2, epoch=50, batch_size=32, predict=True, figsize=[18,6], split_graph = 0, product='', fit_verbose = 0):
         
+        self.fit_verbose = fit_verbose
         self.target_col = target_col
         self.time_steps = time_steps 
         self.scaler_model = scaler
         
-        print('Preprocessing')
         self.x_sc, self.y_sc = self.preprocess(df, target_col, scaler)
 
-        print('Train/Test Split')
         self.x_train, self.x_test, self.y_train, self.y_test = self.train_test_split(test_num)
         
-        print('Time Split for TRAIN')
         self.X_train, self.Y_train = self.train_set_ts_split()
 
-        print('Time Split for TEST')
         self.X_test = self.test_set_ts_split()
 
-        print('Building RNN Model')
         self.build(units, dropout)
 
-        print('Running the Model')
         self.run(epoch, batch_size)
 
         if predict:
-            print('Estimating by the Model')
             self.y_pred = self.test_predict()
 
             self.y_test_inv = self.scaler_model.inverse_transform(self.y_test)
             self.y_pred_inv = self.scaler_model.inverse_transform(self.y_pred)
 
-            print('Visualizing Results')
             self.test_visualize(figsize, split_graph, product)
 
-            print('Evaluating Accuracy of the Model by Mean Percentage Error')
             self.test_error()
         
 
@@ -127,11 +119,11 @@ class My_Price_Regressor():
         self.model.compile(optimizer='adam', loss='mean_squared_error')
         
         # fit model
-        self.model.fit(self.X_train, self.Y_train, epochs = epoch, batch_size = batch_size)
+        self.model.fit(self.X_train, self.Y_train, epochs = epoch, batch_size = batch_size, verbose=self.fit_verbose)
 
 
     def test_predict(self):
-        y_pred = self.model.predict(self.X_test)
+        y_pred = self.model.predict(self.X_test, verbose=self.fit_verbose)
         return y_pred
 
 
@@ -211,59 +203,70 @@ class My_Price_Regressor():
 
     def model_tune(self, test_num, epoch, time_steps, units, dropout, batch_size):
 
-        def model_tune_exhibit(table):
-            table_df = pd.DataFrame(data=table, columns=['MPE', 'MPCE', 'MPCPE', 'test_num', 'epoch', 'time_steps', 'units', 'dropout', 'batch_size'])
-
-            table_df.sort_values(by= 'MPE', ascending=True)['Score MPE'] = range(len(table_df))
-            table_df.sort_values(by= 'MPCE', ascending=True)['Score MPCE'] = range(len(table_df))
-            table_df.sort_values(by= 'MPCPE', ascending=True)['Score MPCPE'] = range(len(table_df))
-            
-            table_df['Total_Score'] = table_df['Score MPE'] + table_df['Score MPCE'] + table_df['Score MPCPE'] 
-            
-            print('Total Score Top 3')
-            print(table_df.sort_values(by='Total Score', ascending=True).iloc[:3, :])
-            print('-|'*10, 'Score MPE Top 3')
-            print(table_df.sort_values(by='Score MPE', ascending=True).iloc[:3, :])
-            print('-|'*10, 'Score MPCE Top 3')
-            print(table_df.sort_values(by='Score MPCE', ascending=True).iloc[:3, :])
-            print('-|'*10, 'Score MPCPE Top 3')
-            print(table_df.sort_values(by='Score MPCPE', ascending=True).iloc[:3, :])
-
-            
-
-
         total_process = len(test_num) * len(epoch) * len(time_steps) * len(units) * len(dropout) * len(batch_size)
+        process_step = 1
         model_tune_array = np.array([])
-        for test_num in test_num:
-            for epoch in epoch:
-                for time_steps in time_steps:
-                    for units in units:
-                        for dropout in dropout:
-                            for batch_size in batch_size:
+        for tn in test_num:
+            for e in epoch:
+                for ts in time_steps:
+                    for u in units:
+                        for d in dropout:
+                            for bs in batch_size:
+                                print(f'Process Step: {process_step}/{total_process}')
+                                self.time_steps = ts
 
-                                self.time_steps = time_steps
-
-                                self.x_train, self.x_test, self.y_train, self.y_test = self.train_test_split(test_num)
+                                self.x_train, self.x_test, self.y_train, self.y_test = self.train_test_split(tn)
                                 
                                 self.X_train, self.Y_train = self.train_set_ts_split()
 
                                 self.X_test = self.test_set_ts_split()
 
-                                self.build(units, dropout)
+                                self.build(u, d)
 
-                                self.run(epoch, batch_size)
+                                self.run(e, bs)
 
                                 self.y_pred = self.test_predict()
 
                                 self.y_test_inv = self.scaler_model.inverse_transform(self.y_test)
                                 self.y_pred_inv = self.scaler_model.inverse_transform(self.y_pred)
 
-                                variables = np.array([test_num, epoch, time_steps, units, dropout, batch_size])
+                                variables = np.array([tn, e, ts, u, d, bs])
                                 
-                                np.append(model_tune_array, np.concatenate([self.error_array, variables], axis=0))
+                                model_tune_array = np.append(model_tune_array, np.concatenate([self.error_array, variables]))
+
+                                process_step += 1
+
         
-        model_tune_array = model_tune_array.reshape(total_process/9,9)
-        
+        model_tune_array = model_tune_array.reshape(total_process,9)
+
+        def model_tune_exhibit(table):
+            table_df = pd.DataFrame(data=table, columns=['MPE', 'MPCE', 'MPCPE', 'test_num', 'epoch', 'time_steps', 'units', 'dropout', 'batch_size'])
+
+            table_df['index'] = table_df.index
+            table_df[table_df.columns[-1:].to_list() + table_df.columns[:-1].to_list()]
+
+            table_df = table_df.sort_values(by= 'MPE', ascending=True)
+            table_df['Score MPE'] = range(len(table_df))
+
+            table_df = table_df.sort_values(by= 'MPCE', ascending=True)
+            table_df['Score MPCE'] = range(len(table_df))
+
+            table_df = table_df.sort_values(by= 'MPCPE', ascending=True)
+            table_df['Score MPCPE'] = range(len(table_df))
+            
+            table_df['Total Score'] = table_df['Score MPE'] + table_df['Score MPCE'] + table_df['Score MPCPE'] 
+            
+            pd.set_option('display.width', 500)
+
+            print('\n', '-|'*20, ' Total Score Top 3 ','-|'*20)
+            print(table_df.sort_values(by='Total Score', ascending=True).iloc[1:4, :])
+            print('\n', '-|'*20, ' Score MPE Top 3 ', '-|'*20)
+            print(table_df.sort_values(by='Score MPE', ascending=True).iloc[1:4, :])
+            print('\n', '-|'*20, ' Score MPCE Top 3 ', '-|'*20)
+            print(table_df.sort_values(by='Score MPCE', ascending=True).iloc[1:4, :])
+            print('\n', '-|'*20, ' Score MPCPE Top 3' , '-|'*20)
+            print(table_df.sort_values(by='Score MPCPE', ascending=True).iloc[1:4, :])
+                  
         model_tune_exhibit(model_tune_array)
 
 
