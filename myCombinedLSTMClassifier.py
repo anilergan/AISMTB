@@ -5,11 +5,12 @@ from keras.layers import Dropout
 import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+from time import time
 
 
 class My_Combined_LSTM_Classifier():
 
-    def __init__(self, x, y, test_num, time_steps,  hidden_layer_num = 3, units=50, dropout=0.2, epoch=50, batch_size=32, model_activation = 'relu', predict=True, fit_verbose = 1):
+    def __init__(self, x, y, test_num=200, time_steps=60,  hidden_layer_num = 3, units=50, dropout=0.2, epoch=50, batch_size=32, model_activation = 'relu', predict=True, fit_verbose = 1):
         self.X = x
         self.Y = y
 
@@ -113,134 +114,78 @@ class My_Combined_LSTM_Classifier():
         # Accuracy hesapla
         accuracy = accuracy_score(y_test_category, y_pred_category)
         formatted_accuracy = round(accuracy * 100, 2)
-        print(f"Accuracy: {formatted_accuracy}%")
+        return formatted_accuracy
 
 
-'''
 
-    def test_error(self):
-        real_price_change_perc = []
-        real_price_change = []
-        real_price = []
-        for i in range(self.y_test_inv.shape[0] - 1):
-            price = self.y_test_inv[i]
-            price_change = self.y_test_inv[i+1] - self.y_test_inv[i]
-            price_change_perc = price_change * 100 / self.y_test_inv[i]
+    def model_tune(self, test_num, epoch, time_steps, units, dropout, hidden_layer_num, model_activation, batch_size):
 
-            real_price.append(price)
-            real_price_change.append(price_change)
-            real_price_change_perc.append(price_change_perc)
-
-        pred_price_change_perc = []
-        pred_price_change = []
-        pred_price = []
-        for i in range(self.y_pred.shape[0] - 1):
-            price = self.y_pred_inv[i]
-            price_change = self.y_pred_inv[i+1] - self.y_pred_inv[i]
-            price_change_perc = price_change * 100 / self.y_pred_inv[i]
-
-            pred_price.append(price)
-            pred_price_change.append(price_change)
-            pred_price_change_perc.append(price_change_perc)
-
-        error_price_change_perc = []
-        error_price_change = []
-        error_price = []
-        for i in range(len(pred_price_change_perc)):
-
-            error_price_change_perc.append(abs(real_price_change_perc[i] - pred_price_change_perc[i]))
-            error_price_change.append(abs(real_price_change[i] - pred_price_change[i]))
-            error_price.append(abs(real_price[i] - pred_price[i]))
-        
-        real_price, pred_price, error_price, real_price_change, pred_price_change, error_price_change, real_pc_perc, pred_pc_perc, error_pc_perc = np.array(real_price), np.array(pred_price), np.array(error_price), np.array(real_price_change), np.array(pred_price_change), np.array(error_price_change), np.array(real_price_change_perc), np.array(pred_price_change_perc), np.array(error_price_change_perc)
-        
-        # array_combined = np.concatenate([real_price, pred_price, error_price, real_price_change, pred_price_change, error_price_change, real_pc_perc, pred_pc_perc, error_pc_perc], axis = 1)
-
-        # df_mpe = pd.DataFrame(data = array_combined, columns = ['real_price', 'pred_price', 'error_price', 'real_price_change', 'pred_price_change', 'error_price_change', 'real_pc_perc', 'pred_pc_perc', 'error_pc_perc'])
-
-        # print('-'*20, '\n', df_mpe)
-        # print('Mean Price Error: ', error_price.mean())
-        # print('Mean Price Change Error: ', error_price_change.mean())
-        # print('Mean Price Change Percentage Error: ', error_pc_perc.mean())
-
-        self.error_array = np.array([error_price.mean(), error_price_change.mean(), error_pc_perc.mean()])
-
-
-    def model_tune(self, test_num, epoch, time_steps, units, dropout, batch_size):
-
-        total_process = len(test_num) * len(epoch) * len(time_steps) * len(units) * len(dropout) * len(batch_size)
+        total_process = len(test_num) * len(epoch) * len(time_steps) * len(units) * len(dropout) * len(hidden_layer_num) * len(model_activation) * len(batch_size)
         process_step = 1
         model_tune_array = np.array([])
+
+        print('THE MODEL IS TUNING!\nSEE U AN ETERNITY LATER *_*\n')
         for tn in test_num:
             for e in epoch:
                 for ts in time_steps:
                     for u in units:
                         for d in dropout:
-                            for bs in batch_size:
-                                print(f'Process Step: {process_step}/{total_process}')
-                                self.time_steps = ts
+                            for hln in hidden_layer_num:
+                                for ma in model_activation:
+                                        for bs in batch_size:
+                                            
+                                            start_time = time()
 
-                                self.x_train, self.x_test, self.y_train, self.y_test = self.train_test_split(tn)
+                                            self.time_steps = ts
+
+                                            self.x_train, self.x_test, self.y_train, self.y_test = self.train_test_split(tn)
+                                            
+                                            self.X_train, self.Y_train = self.train_set_ts_split()
+
+                                            self.X_test = self.test_set_ts_split()
+
+                                            self.build(hln, u, d, ma)
+
+                                            self.run(e, bs)
+
+                                            accuracy = self.evaluate()
+                                            accuracy = np.array([accuracy])
+
+                                            variables = np.array([tn, e, ts, u, d, hln, ma, bs])
+                                            
+                                            model_tune_array = np.append(model_tune_array, np.concatenate([accuracy, variables]))
+
+                                            end_time = time()
                                 
-                                self.X_train, self.Y_train = self.train_set_ts_split()
+                                            #################################
 
-                                self.X_test = self.test_set_ts_split()
+                                            def convert_second_to_minute(sure):
+                                                minute = int(sure / 60)
+                                                second = int(sure % 60)
+                                                return f"{minute} min {second} sec"
+                                            
+                                            if (end_time-start_time) >= 60 :
+                                                time_str = convert_second_to_minute((end_time-start_time))
+                                            
+                                            else: time_str = f"{round((end_time-start_time), 1)} sec"
+                                                
 
-                                self.build(u, d)
+                                            print(f'Tune Step: {process_step}/{total_process} is done! It took {time_str}')
 
-                                self.run(e, bs)
-
-                                self.y_pred = self.test_predict()
-
-                                self.y_test_inv = self.scaler_model.inverse_transform(self.y_test)
-                                self.y_pred_inv = self.scaler_model.inverse_transform(self.y_pred)
-
-                                variables = np.array([tn, e, ts, u, d, bs])
-                                
-                                model_tune_array = np.append(model_tune_array, np.concatenate([self.error_array, variables]))
-
-                                process_step += 1
+                                            process_step += 1
 
         
         model_tune_array = model_tune_array.reshape(total_process,9)
 
         def model_tune_exhibit(table):
-            table_df = pd.DataFrame(data=table, columns=['MPE', 'MPCE', 'MPCPE', 'test_num', 'epoch', 'time_steps', 'units', 'dropout', 'batch_size'])
+            table_df = pd.DataFrame(data=table, columns=['accuracy', 'test_num', 'epoch', 'time_steps', 'units', 'dropout', 'hidden_layer_num', 'model_activation', 'batch_size'])
 
             table_df['index'] = table_df.index
-            table_df[table_df.columns[-1:].to_list() + table_df.columns[:-1].to_list()]
-
-            table_df = table_df.sort_values(by= 'MPE', ascending=True)
-            table_df['Score MPE'] = range(len(table_df))
-
-            table_df = table_df.sort_values(by= 'MPCE', ascending=True)
-            table_df['Score MPCE'] = range(len(table_df))
-
-            table_df = table_df.sort_values(by= 'MPCPE', ascending=True)
-            table_df['Score MPCPE'] = range(len(table_df))
-            
-            table_df['Total Score'] = table_df['Score MPE'] + table_df['Score MPCE'] + table_df['Score MPCPE'] 
+            table_df = table_df[table_df.columns[-1:].to_list() + table_df.columns[:-1].to_list()]
             
             pd.set_option('display.width', 500)
 
-            print('\n', '-|'*20, ' Total Score Top 3 ','-|'*20)
-            print(table_df.sort_values(by='Total Score', ascending=True).iloc[1:4, :])
-            print('\n', '-|'*20, ' Score MPE Top 3 ', '-|'*20)
-            print(table_df.sort_values(by='Score MPE', ascending=True).iloc[1:4, :])
-            print('\n', '-|'*20, ' Score MPCE Top 3 ', '-|'*20)
-            print(table_df.sort_values(by='Score MPCE', ascending=True).iloc[1:4, :])
-            print('\n', '-|'*20, ' Score MPCPE Top 3' , '-|'*20)
-            print(table_df.sort_values(by='Score MPCPE', ascending=True).iloc[1:4, :])
-                  
+            print('\n', '-|'*17, ' Top 10 Accuracy and Variables ','-|'*17)
+            print(table_df.sort_values(by= 'accuracy', ascending=False).iloc[:10, :])
+             
         model_tune_exhibit(model_tune_array)
-
-
-    # def new_data_prediction(self, x_new, y_new):
-
-    #     x, y = self.preprocess(x_new, y_new) 
-
-    #     x = self.time_steps_split(self.x, self.time_steps)
-
-    #     x
-
-    '''
