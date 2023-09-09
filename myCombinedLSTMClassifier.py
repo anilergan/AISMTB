@@ -28,7 +28,8 @@ class My_Combined_LSTM_Classifier():
         self.run(epoch, batch_size)
 
         if predict:
-            self.evaluate()
+            accuracy = self.evaluate()
+            print('Model Accuracy: ',accuracy)
 
             # self.y_test_inv = self.scaler_model.inverse_transform(self.y_test)
             # self.y_pred_inv = self.scaler_model.inverse_transform(self.y_pred)
@@ -49,10 +50,8 @@ class My_Combined_LSTM_Classifier():
         X_train = []
         Y_train = []
         for i in range(self.time_steps, self.x_train.shape[0]):
-
-            x_train_ts = self.x_train[i-self.time_steps:i, :]
+            x_train_ts =  self.x_train[i-self.time_steps:i, :]
             y_train_ts = self.y_train[i, :]
-
             X_train.append(x_train_ts)
             Y_train.append(y_train_ts)
 
@@ -67,7 +66,6 @@ class My_Combined_LSTM_Classifier():
 
         X_test = []
         for i in range(self.time_steps, self.time_steps + len(self.x_test)):
-
             x_test_ts = inputs[i-self.time_steps:i, :]
             X_test.append(x_test_ts)
             
