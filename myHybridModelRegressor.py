@@ -87,7 +87,7 @@ class My_Ichimoku_Price_Predictor():
 
         return x_R_train_lstm_array_reshaped, x_R_test_lstm_array_reshaped
             
-    def build_lstm(self, units, dropout, lstm_act, time_steps):
+    def build(self, units, dropout, lstm_act, time_steps):
         self.model_lstm = Sequential()
 
         # input
