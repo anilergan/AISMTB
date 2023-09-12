@@ -4,7 +4,7 @@ from keras.layers import LSTM
 from keras.layers import Dropout
 import numpy as np
 import pandas as pd
-from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+from sklearn.metrics import accuracy_score, confusion_matrix
 from time import time
 
 
@@ -28,8 +28,9 @@ class My_Combined_LSTM_Classifier():
         self.run(epoch, batch_size)
 
         if predict:
-            accuracy = self.evaluate()
-            print('Model Accuracy: ',accuracy)
+            accuracy, con_matrix = self.evaluate()
+            print('Model Accuracy: ', accuracy)
+            print('\nConfussion Matrix:\n', con_matrix)
 
             # self.y_test_inv = self.scaler_model.inverse_transform(self.y_test)
             # self.y_pred_inv = self.scaler_model.inverse_transform(self.y_pred)
@@ -112,7 +113,10 @@ class My_Combined_LSTM_Classifier():
         # Accuracy hesapla
         accuracy = accuracy_score(y_test_category, y_pred_category)
         formatted_accuracy = round(accuracy * 100, 2)
-        return formatted_accuracy
+
+        con_matrix = confusion_matrix(y_test_category, y_pred_category)
+
+        return formatted_accuracy, con_matrix
 
 
 

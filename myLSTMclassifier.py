@@ -1,13 +1,15 @@
+from keras.models import Sequential as sq
+from keras.layers import Dense
+from keras.layers import LSTM
+from keras.layers import Dropout
+import numpy as np
+import pandas as pd
+
+
 class my_RNN_LSTM_Classifier:
 
     def __init__(self, x, y, test_num, pred_num, units=50, dropout=0.2, epoch=50, batch_size=32):
 
-        from keras.models import Sequential as sq
-        from keras.layers import Dense
-        from keras.layers import LSTM
-        from keras.layers import Dropout
-        import numpy as np
-        import pandas as pd
 
         df = pd.concat([x, y], axis = 1)
 
