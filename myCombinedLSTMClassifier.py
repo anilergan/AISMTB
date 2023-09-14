@@ -30,9 +30,14 @@ class My_Combined_LSTM_Classifier():
         self.run(epoch, batch_size)
 
         if predict:
-            test_accuracy, train_accuracy, profit = self.evaluate()
+            test_accuracy, train_accuracy, con_matrix, profit = self.evaluate()
             print('Train Accuracy: ', train_accuracy)
             print('Test Accuracy:', test_accuracy)
+            con_matrix_df = pd.DataFrame(data = con_matrix, columns=['Predicted Bear', 'Predicted Volatile', 'Predicted Bull'], index = ['Real Bear', 'Real Volatile', 'Real Bull'])
+            print('-|-'*4, 'Confusion Matrix', '-|-'*4, '\n', con_matrix_df)
+            prophect = 
+            print('Trade prophecy accuracy: ', )
+            con_matrix
             print(f'Profit: {profit}%')
 
             # self.y_test_inv = self.scaler_model.inverse_transform(self.y_test)
@@ -126,11 +131,13 @@ class My_Combined_LSTM_Classifier():
         train_accuracy = self.model_history.history['accuracy'][-1]
         train_accuracy = round(train_accuracy * 100, 2) 
 
+        con_matrix = confusion_matrix(y_test_category, y_pred_category)
+
         investment_profit = self.test_investment(y_pred_category)
 
         # con_matrix = confusion_matrix(y_test_category, y_pred_category)
 
-        return test_accuracy, train_accuracy, investment_profit
+        return test_accuracy, train_accuracy, con_matrix, investment_profit
 
 
     def test_investment(self, y_pred):
@@ -224,13 +231,11 @@ class My_Combined_LSTM_Classifier():
 
                                             process_step += 1
 
-        
-        model_tune_array = model_tune_array.reshape(total_process,model_tune_array.shape[1])
+        model_tune_array = model_tune_array.reshape(total_process,11)
 
         def model_tune_exhibit(table):
             table_df = pd.DataFrame(data=table, columns=['profit(%)', 'test_accuracy(%)', 'train_accuracy(%)', 'test_num', 'epoch', 'time_steps', 'units', 'dropout', 'hidden_layer_num', 'model_activation', 'batch_size'])
 
-            table_df['index'] = table_df.index
             table_df = table_df[table_df.columns[-1:].to_list() + table_df.columns[:-1].to_list()]
             
             pd.set_option('display.width', 500)
