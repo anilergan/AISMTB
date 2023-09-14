@@ -159,7 +159,7 @@ class My_Combined_LSTM_Classifier():
         for i in range(0, len(pred_df)-1):
             if pred_df.loc[i, 'bull'] == 1:
                 pred_df.loc[i+1, 'investment'] = (pred_df.loc[i, 'investment'] * pred_df.loc[i+1, 'change'] / 100) + pred_df.loc[i-1, 'investment'] #inside
-            elif pred_df.loc[i, 'volatile'] == 1: pred_df.loc[i+1, 'investment'] = pred_df.loc[i, 'investment'] #not insid
+            elif pred_df.loc[i, 'volatile'] == 1: pred_df.loc[i+1, 'investment'] = pred_df.loc[i, 'investment'] #not inside
         
             elif pred_df.loc[i, 'bear'] == 1: pred_df.loc[i+1, 'investment'] = pred_df.loc[i, 'investment'] #not inside
 
