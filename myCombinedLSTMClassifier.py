@@ -5,15 +5,16 @@ from keras.layers import LSTM
 from keras.layers import Dropout
 import numpy as np
 import pandas as pd
-from sklearn.metrics import accuracy_score, confusion_matrix
+from sklearn.metrics import precision_score, recall_score, confusion_matrix
+from keras.metrics import Precision, Recall
 from time import time
 
 
 class My_Combined_LSTM_Classifier():
 
-    def __init__(self, x, y, test_num, time_steps=10,  hidden_layer_num = 3, units=50, dropout=0.2, epoch=10, batch_size=32, model_activation = 'relu', predict=True, fit_verbose = 1):
+    def __init__(self, x, x_change, y, test_num, time_steps=10,  hidden_layer_num = 3, units=50, dropout=0.2, epoch=10, batch_size=32, model_activation = 'relu', predict=True, fit_verbose = 1):
         self.X = x[:, :-1]
-        self.X_change = x[:, -1:]
+        self.X_change = x_change
         self.Y = y
 
         self.fit_verbose = fit_verbose
@@ -30,15 +31,14 @@ class My_Combined_LSTM_Classifier():
         self.run(epoch, batch_size)
 
         if predict:
-            test_accuracy, train_accuracy, con_matrix, profit = self.evaluate()
-            print('Train Accuracy: ', train_accuracy)
-            print('Test Accuracy:', test_accuracy)
-            con_matrix_df = pd.DataFrame(data = con_matrix, columns=['Predicted Bear', 'Predicted Volatile', 'Predicted Bull'], index = ['Real Bear', 'Real Volatile', 'Real Bull'])
-            print('-|-'*4, 'Confusion Matrix', '-|-'*4, '\n', con_matrix_df)
-            prophect = 
-            print('Trade prophecy accuracy: ', )
-            con_matrix
-            print(f'Profit: {profit}%')
+            test_precision, train_precision, test_recall, train_recall, con_matrix, optimum_profit, models_profit = self.evaluate()
+
+            print(f'Precision Scores: \nTrain {train_precision}%\nTest {test_precision}%\n')
+            print(f'Recall Scores: \nTrain {train_recall}%\nTest {test_recall}%\n')
+            print('-|'*7, 'Confusion Matrix', '-|'*7, '\n', con_matrix)
+
+            print(f'\nOptimum Profit: {optimum_profit}%')
+            print(f"Model's profit: {models_profit}%")
 
             # self.y_test_inv = self.scaler_model.inverse_transform(self.y_test)
             # self.y_pred_inv = self.scaler_model.inverse_transform(self.y_pred)
@@ -107,69 +107,77 @@ class My_Combined_LSTM_Classifier():
 
     def run(self, epoch, batch_size):
         # compile model
-        self.model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+        self.model.compile(optimizer='adam', loss='binary_crossentropy', metrics=[Precision(), Recall()])
 
         
         # fit model
-        self.X_train = convert_to_tensor(self.X_train, dtype=float32)
-        self.Y_train = convert_to_tensor(self.Y_train, dtype=float32)
+        # self.X_train = convert_to_tensor(self.X_train, dtype=float32)
+        # self.Y_train = convert_to_tensor(self.Y_train, dtype=float32)
 
         self.model_history = self.model.fit(self.X_train, self.Y_train, epochs = epoch, batch_size = batch_size, verbose=self.fit_verbose)
 
 
     def evaluate(self):
-        self.X_test = convert_to_tensor(self.X_test, dtype=float32)
         self.y_pred = self.model.predict(self.X_test, verbose=self.fit_verbose)
         # # Düz tahminleri kategorik etiketlere dönüştür
-        y_pred_category = np.argmax(self.y_pred, axis=1)
-        y_test_category = np.argmax(self.y_test, axis=1)
 
-        # Accuracy hesapla
-        test_accuracy = accuracy_score(y_test_category, y_pred_category)
-        test_accuracy = round(test_accuracy * 100, 2)
+        threshold = 0.5
+        self.y_pred_binary = (self.y_pred >= threshold).astype(int)
 
-        train_accuracy = self.model_history.history['accuracy'][-1]
-        train_accuracy = round(train_accuracy * 100, 2) 
 
-        con_matrix = confusion_matrix(y_test_category, y_pred_category)
+        # Precision Score
+        test_precision = precision_score(self.y_test, self.y_pred_binary)
+        test_precision = int(test_precision * 100)
 
-        investment_profit = self.test_investment(y_pred_category)
 
-        # con_matrix = confusion_matrix(y_test_category, y_pred_category)
+        history_df = pd.DataFrame(self.model_history.history)
+        train_precision = history_df.iloc[-1,1]
+        train_precision = int(train_precision * 100)
 
-        return test_accuracy, train_accuracy, con_matrix, investment_profit
+        # Recall Score
+        test_recall = recall_score(self.y_test, self.y_pred_binary)
+        test_recall = int(test_recall * 100)
+        train_recall = history_df.iloc[-1, 2]
+        train_recall = int(train_recall * 100)
+        
+
+        if len(np.unique(self.y_pred_binary)) != 1:
+            con_matrix = confusion_matrix(self.y_test, self.y_pred_binary)
+            con_matrix_df = pd.DataFrame(data = con_matrix, columns=['Predicted In', 'Predicted Out'], index = ['Real In', 'Real Out'])
+        else: con_matrix_df = 'Confusion Matrix cound not be created. Shape Issue!'
+
+        models_profit = self.test_investment(self.y_pred_binary)
+        optimum_profit = self.test_investment(self.X_test)
+
+        return test_precision, train_precision, test_recall, train_recall, con_matrix_df, optimum_profit, models_profit
 
 
     def test_investment(self, y_pred):
-        pred_df = pd.DataFrame(data = 0, index=range(len(y_pred)), columns=['bear','volatile', 'bull', 'change', 'investment'])
-
+        pred_df = pd.DataFrame(data = 0, index=range(len(y_pred)), columns=['In', 'Out', 'Change', 'Investment'])
+        print(y_pred)
         for i in range(len(y_pred)):
             if y_pred[i] == 0:
-                pred_df.iloc[i, 0] = 1
-            elif y_pred[i] == 1: 
+                pred_df.iloc[i, 0] = 0
                 pred_df.iloc[i, 1] = 1
-            elif y_pred[i] == 2:
-                pred_df.iloc[i, 2] = 1
+            elif y_pred[i] == 1: 
+                pred_df.iloc[i, 0] = 1
+                pred_df.iloc[i, 1] = 0
+
         for i in range(len(self.x_change_test)):
-            pred_df.iloc[i, 3] = self.x_change_test[i]
+            pred_df.iloc[i, 2] = self.x_change_test[i]
 
         
-        pred_df.iloc[:, 4] = 100
+        pred_df.iloc[:, 3] = 100
         
-        for i in range(0, len(pred_df)-1):
-            if pred_df.loc[i, 'bull'] == 1:
-                pred_df.loc[i+1, 'investment'] = (pred_df.loc[i, 'investment'] * pred_df.loc[i+1, 'change'] / 100) + pred_df.loc[i-1, 'investment'] #inside
-            elif pred_df.loc[i, 'volatile'] == 1: pred_df.loc[i+1, 'investment'] = pred_df.loc[i, 'investment'] #not inside
-        
-            elif pred_df.loc[i, 'bear'] == 1: pred_df.loc[i+1, 'investment'] = pred_df.loc[i, 'investment'] #not inside
+        for i in range(len(pred_df)-1):
+            if pred_df.loc[i, 'In'] == 1:
+                pred_df.loc[i+1, 'Investment'] = (pred_df.loc[i, 'Investment'] * pred_df.loc[i+1, 'Change'] / 100) + pred_df.loc[i, 'Investment'] #inside
+            elif pred_df.loc[i, 'Out'] == 1: pred_df.loc[i+1, 'Investment'] = pred_df.loc[i, 'Investment'] #not inside
 
-        pred_df.loc[:,['bear', 'volatile', 'bull', 'change', 'investment']]
-
-        investment_profit = round(pred_df.iloc[-1, -1] - pred_df.iloc[0, -1], 2)
-
+        investment_profit = int(pred_df.iloc[-1, 3] - pred_df.iloc[0, 3])
 
         return investment_profit
-
+        
         
         
 
@@ -205,8 +213,9 @@ class My_Combined_LSTM_Classifier():
 
                                             self.run(e, bs)
 
-                                            test_acc, train_acc, profit = self.evaluate()
-                                            results = np.array([profit, test_acc, train_acc])
+                                            test_precision, train_precision, test_recall, train_recall, con_matrix, profit = self.evaluate()
+
+                                            results = np.array([profit, train_precision, test_precision, train_recall, test_recall,])
 
                                             variables = np.array([tn, e, ts, u, d, hln, ma, bs])
                                             
@@ -231,16 +240,17 @@ class My_Combined_LSTM_Classifier():
 
                                             process_step += 1
 
-        model_tune_array = model_tune_array.reshape(total_process,11)
+        model_tune_array = model_tune_array.reshape(total_process,13)
 
         def model_tune_exhibit(table):
-            table_df = pd.DataFrame(data=table, columns=['profit(%)', 'test_accuracy(%)', 'train_accuracy(%)', 'test_num', 'epoch', 'time_steps', 'units', 'dropout', 'hidden_layer_num', 'model_activation', 'batch_size'])
-
-            table_df = table_df[table_df.columns[-1:].to_list() + table_df.columns[:-1].to_list()]
+            table_df = pd.DataFrame(data=table, columns=['profit', 'train_precision', 'test_precision', 'train_recall', 'test_recall', 'test_num', 'epoch', 'time_steps', 'units', 'dropout', 'hidden_layer_num', 'model_activation', 'batch_size'])
             
             pd.set_option('display.width', 500)
 
-            print('\n', '-|'*17, ' Top 10 Profit and Variables ','-|'*17)
-            print(table_df.sort_values(by= 'profit(%)', ascending=False).iloc[:10, :])
+            # print('\n', '-|'*17, ' Top 10 Profit and Variables ','-|'*17)
+            table_df = table_df.sort_values(by='profit', ascending=False)
+
+            return table_df
              
-        model_tune_exhibit(model_tune_array)
+        table_df = model_tune_exhibit(model_tune_array)
+        return table_df
